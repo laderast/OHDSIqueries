@@ -1,0 +1,40 @@
+---
+title: "Some of the Achilles Queries"
+author: "Ted Laderas"
+date: "2/14/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+I pulled a few of the queries that were calculated by Achilles so we can spot check.
+
+```{r warning=FALSE, message=FALSE}
+#load DB connection info (not saved in repo)
+source("connect.R")
+library(Achilles)
+connectionDetails <- createConnectionDetails(dbms="postgresql", server=server,user = user,
+                                             password = password,schema=schema)
+
+#load the names of each achilles query
+achillesQueries <- getAnalysisDetails()
+```
+
+##Query 2: Number of People by Gender
+
+This is a fairly simple query. 
+
+```{r}
+queryNum <- 2
+achillesResult <- fetchAchillesAnalysisResults(connectionDetails,resultsDatabase = "public", analysisId = queryNum)
+
+achillesResult
+```
+
+```{r}
+exportToJson(connectionDetails, "public", "public", "~/Code/AchillesWeb/data/OHDSI")
+```
