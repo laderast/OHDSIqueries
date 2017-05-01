@@ -1,0 +1,71 @@
+---
+title: "Cohort Queries"
+author: "Ted Laderas"
+date: "4/4/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Tables
+
+```{r warning=FALSE}
+library(ggplot2)
+library(dplyr)
+##Load Connection Information (not saved to git)
+#jsonObject <- fromJSON()
+
+source("connect.R")
+#install.packages("RPostgreSQL")
+#install.packages("DBI")
+
+library(RPostgreSQL)
+library(DBI)
+drv <- dbDriver("PostgreSQL")
+
+#conDetails <- DatabaseConnector::createConnectionDetails(dbms = dbms, user = user, password=password,
+#                                                         server = server, schema = schema, port = port)
+
+#library(RMySQL)
+mydb = dbConnect(PostgreSQL(), user=user, password=password, port=5432, dbname="ohdsi_omop", host="cmp03.acc.research.computing")
+
+#show all tables in OHDSI DB
+dbListTables(mydb)
+```
+
+## Grabbing everyone
+
+This is the first query.
+
+```{r}
+#step 1: pull every person
+sqlStatementall <- "select 
+pr.person_id, pr.year_of_birth, pr.month_of_birth, pr.day_of_birth, pr.race_source_value as race, 
+   pr.ethnicity_source_value 
+  from person pr"
+
+rs <- dbSendQuery(mydb,sqlStatementall)
+allPeople <- fetch(rs, n=-1)
+dbClearResult(rs)
+
+#show first lines of table
+head(allPeople)
+
+#show histogram of people's birthdates
+hist(allPeople$year_of_birth)
+
+#table of race
+table(allPeople$race)
+table(allPeople$ethnicity_source_value)
+
+#cross table
+table(allPeople$race, allPeople$ethnicity_source_value)
+```
+
+#Query 1B
+
+```{r}
+
+```
