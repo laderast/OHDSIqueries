@@ -35,11 +35,12 @@ mydb = dbConnect(PostgreSQL(), user=user, password=password, port=5432, dbname="
 dbListTables(mydb)
 ```
 
+
 ## Grabbing everyone
 
 This is the first query.
 
-```{r}
+```{r pressure, echo=FALSE}
 #step 1: pull every person
 sqlStatementall <- "select 
 pr.person_id, pr.year_of_birth, pr.month_of_birth, pr.day_of_birth, pr.race_source_value as race, 
@@ -50,22 +51,76 @@ rs <- dbSendQuery(mydb,sqlStatementall)
 allPeople <- fetch(rs, n=-1)
 dbClearResult(rs)
 
-#show first lines of table
-head(allPeople)
+#summary(allPeople)
 
-#show histogram of people's birthdates
+#show histogram of people
 hist(allPeople$year_of_birth)
-
-#table of race
 table(allPeople$race)
 table(allPeople$ethnicity_source_value)
-
-#cross table
-table(allPeople$race, allPeople$ethnicity_source_value)
 ```
 
 #Query 1B
 
-```{r}
+#step 3 : create unique dataset with dummy variables and case statements + retain original codes
 
+
+```{r}
+sqlStatementdata <- "
+select 
+pr.person_id, pr.year_of_birth, pr.month_of_birth, pr.day_of_birth, pr.race_source_value as race, 
+pr.ethnicity_source_value as ethnicity,
+case when o.person_ID is not null then 1 else 0 END as outcome, o.OUTCOME_NAME, o.ASCVD_code,
+case when dx.cohort_name='Diabetes - ICD10CM'
+then 1 else 0 end as diabetes
+,case when dx.cohort_name='Hypertension - ICD10CM'
+then 1 else 0 end as htn
+,case when dx.cohort_name='Anti-Hypertensive Pharmacologic Therapy - RxNORM'
+then 1 else 0 end as htn_treatment
+,case when dx.cohort_name='Diabetes - ICD10CM'
+then dx.cohort_code else 'NA' end as diabetes_code
+,case when dx.cohort_name='Hypertension - ICD10CM'
+then dx.cohort_code else 'NA' end as htn_code
+,case when dx.cohort_name='Anti-Hypertensive Pharmacologic Therapy - RxNORM'
+then dx.cohort_code else 'NA' end as htn_tx_code
+
+from person pr
+LEFT JOIN (select 
+co.person_id, cd.cohort_definition_name as OUTCOME_NAME, cs.concept_code as ASCVD_code 
+from cohort_definition cd
+join cohort_attribute ca on ca.cohort_definition_id = cd.cohort_definition_id
+join concept cs on ca.value_as_concept_id = cs.concept_id
+inner join condition_occurrence co on co.condition_concept_id = cs.concept_id
+where cd.cohort_definition_name='ASCVD') o on (pr.person_ID=o.person_ID)
+LEFT JOIN (select 
+ co.person_ID, cd.cohort_definition_name as cohort_NAME, cs.concept_code as cohort_code 
+from cohort_definition cd
+join cohort_attribute ca on ca.cohort_definition_id = cd.cohort_definition_id
+join concept cs on ca.value_as_concept_id = cs.concept_id
+inner join condition_occurrence co on co.condition_concept_id = cs.concept_id
+where cd.cohort_definition_name in ('Diabetes - ICD10CM','Hypertension - ICD10CM','Anti-Hypertensive Pharmacologic Therapy - RxNORM')) dx on (dx.person_ID=pr.person_ID)
+
+"
+
+rs <- dbSendQuery(mydb,sqlStatementdata)
+cohorts <- fetch(rs, n=-1)
+summary(cohorts)
+View(cohorts)
+dbClearResult(rs)
+```
+```{r}
+sqlStatementdata <- "
+select 
+co.person_id, cd.cohort_definition_name as OUTCOME_NAME, cs.concept_code as ASCVD_code 
+from cohort_definition cd
+join cohort_attribute ca on ca.cohort_definition_id = cd.cohort_definition_id
+join concept cs on ca.value_as_concept_id = cs.concept_id
+left join condition_occurrence co on co.condition_concept_id = cs.concept_id
+where cd.cohort_definition_name='ASCVD'
+
+"
+
+rs <- dbSendQuery(mydb,sqlStatementdata)
+subq <- fetch(rs, n=-1)
+summary(subq)
+dbClearResult(rs)
 ```
