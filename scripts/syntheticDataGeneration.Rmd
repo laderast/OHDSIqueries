@@ -1,0 +1,107 @@
+---
+title: "Bayesian Network for Synthetic Data"
+author: "Ted Laderas"
+date: "5/4/2017"
+output: html_document
+---
+
+In this file, I start generating the synthetic data using the gRain package.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(gRain)
+library(tidyverse)
+```
+
+```{r}
+cohort <- read.csv("~/Code/OHDSIqueries/data/cohorts_05022017.csv")
+#recode these variables as categorical
+cohort$outcome <- factor(cohort$outcome)
+cohort$htn <- factor(cohort$htn)
+cohort$htn_treatment <- factor(cohort$htn_treatment)
+cohort$diabetes <- factor(cohort$diabetes)
+#add age
+cohort <- cohort %>% mutate(age=2017-year_of_birth)
+
+HTNtreat <- table(cohort$htn, cohort$htn_treatment)
+condHTNtreat <- HTNtreat/rowSums(HTNtreat)
+
+
+out <- cut(cohort$age, breaks=c(0,20, 40, 55, 70,90))
+cohort <- data.frame(cohort, ageCategory=out)
+
+#cohort <- cohort %>% mutate(ageCategory = ntile(age,n=4))
+
+tabOut <- table(out)
+ageProb <- tabOut/sum(tabOut)
+condHTNAge <- table(cohort$ageCategory, cohort$htn)
+condHTNAgeprob <- condHTNAge/rowSums(condHTNAge)
+
+tabTreatCVD <- table(cohort$outcome, cohort$htn_treatment)
+condTreatCVD <- tabTreatCVD
+
+```
+
+
+## Basic Synthetic Dataset
+
+The first variable we add is Age. 
+
+```{r cars}
+yn <- c("yes","no")
+ageLevels <- c("20-40", "40-55", "55-70","70-90")
+a <- cptable(~age, values=c(13,27,45,15), levels=ageLevels)
+a.c <- cptable(~cvd|age, values=c(10, 90, 20, 80, 40,60, 40,60), levels=yn)
+plist <- compileCPT(list(a, a.c))
+net <- grain(plist)
+
+test <- querygrain(net, nodes=c("age","cvd"), type="joint")
+
+testFrame <- data.frame(age=rownames(test),
+                   test)
+
+testMelt <- testFrame %>% tidyr::gather(cvd, prob,
+                          -age) %>% mutate(cumProb = cumsum(prob))
+
+cumProbLow <- c(0, testMelt$cumProb)[1:nrow(testMelt)]
+
+testMelt <- data.frame(testMelt, cumProbLow)
+
+cumsum(testMelt$prob)
+
+vec <- runif(10000)
+
+assign <- sapply(vec, function(x){ return(which(x < testMelt$cumProb & x > testMelt$cumProbLow))})
+
+dataOut <- lapply(assign, function(x){testMelt[x,]})
+
+dataOutFrame <- do.call(rbind, dataOut)
+
+
+
+generateData <- function(jointTable, n){
+  vec <- runif(n)
+  
+  jointTable %>% mutate(cumProb = cumsum(prob))
+  cumProbLow <- c(0, jointTable$cumProb)[1:nrow(jointTable)]
+  jointTable <- data.frame(jointTable, cumProbLow)
+  assign <- sapply(vec, function(x){ return(which(x < jointTable$cumProb & x > jointTable$cumProbLow))})
+  
+  dataOut <- lapply(assign, function(x){testMelt[x,]})
+  dataOutFrame <- do.call(rbind, dataOut)
+  return(dataOutFrame)
+}
+```
+
+## Adding Smoking
+
+You can also embed plots, for example:
+
+```{r}
+s <- cptable(~smoking, values=c(19,81) ,levels=yn)
+s.c <- cptable(~cvd|smoking:age, values=c(40,60,10,90), levels=yn)
+
+plist <- compileCPT(list(a, a.c, s, s.c)) 
+net <- grain(plist)
+
+```
