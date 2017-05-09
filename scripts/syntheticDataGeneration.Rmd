@@ -14,6 +14,27 @@ library(tidyverse)
 ```
 
 ```{r}
+byRow <- function(mat){
+  rowVec <- lapply(1:nrow(mat), function(x){mat[x,]})
+  outVec <- Reduce(c, rowVec)
+  outVec
+}
+
+generateData <- function(jointTable, n){
+  vec <- runif(n)
+  
+  jointTable <- jointTable %>% mutate(cumProb = cumsum(prob))
+  cumProbLow <- c(0, jointTable$cumProb)[1:nrow(jointTable)]
+  jointTable <- data.frame(jointTable, cumProbLow)
+  jointTable <- jointTable %>% filter(prob != 0)
+  assign <- sapply(vec, function(x){ return(which(x < jointTable$cumProb & x > jointTable$cumProbLow))})
+  
+  dataOutFrame <- jointTable[assign,] %>% select(-cumProbLow, -prob, -cumProb)
+#  dataOutFrame <- do.call(rbind, dataOut)
+  return(dataOutFrame)
+}
+
+
 cohort <- read.csv("~/Code/OHDSIqueries/data/cohorts_05022017.csv")
 #recode these variables as categorical
 cohort$outcome <- factor(cohort$outcome)
@@ -24,7 +45,7 @@ cohort$diabetes <- factor(cohort$diabetes)
 cohort <- cohort %>% mutate(age=2017-year_of_birth)
 
 HTNtreat <- table(cohort$htn, cohort$htn_treatment)
-condHTNtreat <- HTNtreat/rowSums(HTNtreat)
+condHTNtreat <- t(HTNtreat/rowSums(HTNtreat))
 
 
 out <- cut(cohort$age, breaks=c(0,20, 40, 55, 70,90))
@@ -35,10 +56,15 @@ cohort <- data.frame(cohort, ageCategory=out)
 tabOut <- table(out)
 ageProb <- tabOut/sum(tabOut)
 condHTNAge <- table(cohort$ageCategory, cohort$htn)
-condHTNAgeprob <- condHTNAge/rowSums(condHTNAge)
+condHTNAgeprob <- t(condHTNAge/rowSums(condHTNAge))
 
 tabTreatCVD <- table(cohort$outcome, cohort$htn_treatment)
 condTreatCVD <- tabTreatCVD
+
+tabCVDAge <- table(cohort$ageCategory, cohort$outcome)
+
+#rownames(condCVDAge)
+
 
 ```
 
@@ -48,49 +74,42 @@ condTreatCVD <- tabTreatCVD
 The first variable we add is Age. 
 
 ```{r cars}
-yn <- c("yes","no")
-ageLevels <- c("20-40", "40-55", "55-70","70-90")
-a <- cptable(~age, values=c(13,27,45,15), levels=ageLevels)
-a.c <- cptable(~cvd|age, values=c(10, 90, 20, 80, 40,60, 40,60), levels=yn)
-plist <- compileCPT(list(a, a.c))
-net <- grain(plist)
+yn <- c("no","yes")
+ageLevels <- c("0-20","20-40", "40-55", "55-70","70-90")
+a <- cptable(~age, values=ageProb*100, levels=ageLevels)
 
-test <- querygrain(net, nodes=c("age","cvd"), type="joint")
+condCVDAge <- t(matrix(nrow=5, ncol=2, data=c(100,0,90,10,80,20,70,30,60,40),byrow = TRUE,
+                     dimnames = list(ageLevels, yn)))
 
-testFrame <- data.frame(age=rownames(test),
-                   test)
+a.c <- cptable(~cvd|age, values=condCVDAge, levels=yn)
+a.htn <- cptable(~htn | age, values=condHTNAgeprob, levels=yn)
+htn.treat <- cptable(~treat | htn, values=condHTNtreat, levels=yn)
+treat.cvd <- cptable(~cvd | treat, values=c(50,50,25,75), levels=yn)
 
-testMelt <- testFrame %>% tidyr::gather(cvd, prob,
-                          -age) %>% mutate(cumProb = cumsum(prob))
+plist <- compileCPT(list(a, a.c, a.htn, htn.treat, treat.cvd))
+net <- compile(grain(plist))
 
-cumProbLow <- c(0, testMelt$cumProb)[1:nrow(testMelt)]
+test <- querygrain(net, nodes=c("cvd","age", "htn","treat"), type="joint")
+out <- data.frame(test)
 
-testMelt <- data.frame(testMelt, cumProbLow)
+out <- data.frame(t(as.matrix(out)),check.names = FALSE)
+out <- data.frame(cvdTreatHTN=row.names(out), out, check.names = FALSE)
 
-cumsum(testMelt$prob)
+testMelt <- gather(out, age, prob, -cvdTreatHTN) %>% filter(prob > 0) %>%
+  separate(cvdTreatHTN, into=c("cvd", "treat", "htn"))
 
-vec <- runif(10000)
+testData <- generateData(testMelt, n=100000)
 
-assign <- sapply(vec, function(x){ return(which(x < testMelt$cumProb & x > testMelt$cumProbLow))})
+testData <- testData %>% dplyr::mutate(ageCategory=ordered(age)) %>%
+  select(cvd, treat, htn, ageCategory)
 
-dataOut <- lapply(assign, function(x){testMelt[x,]})
+levels(testData$ageCategory) <- ageLevels
 
-dataOutFrame <- do.call(rbind, dataOut)
+write.csv(testData, "~/Code/cvdWorkshop/night1EDA/data/testData.txt",row.names = FALSE)
+
+write.csv(testData, "testData.csv",row.names = FALSE)
 
 
-
-generateData <- function(jointTable, n){
-  vec <- runif(n)
-  
-  jointTable %>% mutate(cumProb = cumsum(prob))
-  cumProbLow <- c(0, jointTable$cumProb)[1:nrow(jointTable)]
-  jointTable <- data.frame(jointTable, cumProbLow)
-  assign <- sapply(vec, function(x){ return(which(x < jointTable$cumProb & x > jointTable$cumProbLow))})
-  
-  dataOut <- lapply(assign, function(x){testMelt[x,]})
-  dataOutFrame <- do.call(rbind, dataOut)
-  return(dataOutFrame)
-}
 ```
 
 ## Adding Smoking
@@ -98,10 +117,29 @@ generateData <- function(jointTable, n){
 You can also embed plots, for example:
 
 ```{r}
-s <- cptable(~smoking, values=c(19,81) ,levels=yn)
-s.c <- cptable(~cvd|smoking:age, values=c(40,60,10,90), levels=yn)
 
-plist <- compileCPT(list(a, a.c, s, s.c)) 
-net <- grain(plist)
+
+a.s <- cptable(~smoking|age, values=c(95,5,90,10,85,15,75,25,90,10),levels=yn)
+s.c <- cptable(~cvd|smoking, values=c(40,60,10,90), levels=yn)
+
+plist <- compileCPT(list(a, a.c, a.htn, htn.treat, treat.cvd, s.c, a.s)) 
+net <- compile(grain(plist))
+
+test <- querygrain(net, nodes=c("cvd","age", "htn","treat","smoking"), type="joint")
+
+test <- data.frame(test, check.names = FALSE)
+
+out <- data.frame(t(as.matrix(test)),check.names = FALSE)
+out <- data.frame(cvdTreatHTNSmoke=row.names(out), out, check.names = FALSE)
+
+testMelt <- gather(out, age, prob, -cvdTreatHTNSmoke) %>% filter(prob > 0) %>%
+  separate(cvdTreatHTNSmoke, into=c("cvd", "treat", "htn","smoke"))
+
+
+testData <- generateData(testMelt, n=100000)
+
+
+#write.csv(testData, "~/Code/cvdWorkshop/night2CART/testData.csv",row.names = FALSE)
+
 
 ```

@@ -25,6 +25,14 @@ cohort$diabetes <- factor(cohort$diabetes)
 #add age
 cohort <- cohort %>% mutate(age=2017-year_of_birth)
 
+byRow <- function(mat){
+  rowVec <- lapply(1:nrow(mat), function(x){mat[x,]})
+  outVec <- Reduce(c, rowVec)
+  outVec
+}
+
+
+
 ```
 
 Here are the overall summary statistics of our cohort:
@@ -57,9 +65,13 @@ cohort <- data.frame(cohort, ageCategory=out)
 tabOut <- table(out)
 ageProb <- tabOut/sum(tabOut)
 
+
 condHTNAge <- table(cohort$ageCategory, cohort$htn)
 
 condHTNAgeprob <- condHTN/sum(condHTN)
+
+tabCVDAge <- table(cohort$ageCategory, cohort$outcome)
+condCVDAge <- 
 ```
 These are the subgroups that we have defined in the dataset.
 
