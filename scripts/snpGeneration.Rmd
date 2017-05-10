@@ -32,6 +32,49 @@ library(hapmapsnp6)
 
 [Rs1333049](http://snpedia.com/index.php/Rs1333049) (Chr 9, 22125504). (G;G) Normal (WT); (C;G) 1.5 increased risk; (C;C) 1.9x increased risk.
 
+[Rs8055236](https://www.snpedia.com/index.php/Rs8055236) - protective SNP
+
+[Rs383830](https://www.snpedia.com/index.php/Rs383830) - (chr 5, 100613278). 1.9 risk for (A;A) homozygote; (T;T) is WT.
+
+## Selected SNPs
+
+These first 2 snps are on the same chromosome and so I will model them as having identical risk, and having both does not increase risk. I am limiting myself to the homozygous cases in order to simplify things.
+
+[Rs10757278](http://snpedia.com/index.php/Rs10757278) (Chr 9, 22124478). (A;A) 0.78 x risk of heart disease, (A;G) 1.3 x risk, (G;G) 1.6x risk for heart disease. Co-morbidity: diabetes
+
+raceNames <- c("white","asian","black", "amInd")
+
+p("AA"|race) = c(21, 24, 80, 30)
+p("GG"|race) = c(79, 76, 20, 70)
+
+pRs10757278race = matrix(nrow=2, by.row=TRUE, data=c(21, 24, 80, 30, 79, 76, 20, 70))
+
+[Rs1333049](http://snpedia.com/index.php/Rs1333049) (Chr 9, 22125504). (G;G) Normal (WT); (C;G) 1.5 increased risk; (C;C) 1.9x increased risk.
+
+These last 2 snps are on different chromosomes for the first. Again, limiting to the homozygous cases to simplify things.
+
+[Rs4665058](http://snpedia.com/index.php/Rs4665058), 4x risk if have two copies of the SNP (A;A), 2 X (A;C) and (C;C) - wild type. Chr 2, 159333698
+
+p("AA"|race) = c(10, 10, 10, 10) 
+p("CC"|race) = c(80,80,80,80)
+
+rs4665058race = matrix(nrow=2, data= c(10, 10, 10, 10, 80,80,80,80), by.row=TRUE)
+
+[rs8055236](https://www.snpedia.com/index.php/Rs8055236) (Chr 16, 83178793) (T;T) Normal (WT);
+(G;T) 1.9x risk, (G;G) 2.2x increased risk
+
+p("GG"|race) = c(62, 65, 20, 62)
+P("TT"|race) = c(38, 35, 80, 38)
+
+rs8055236race = matrix(nrow=2, by.row=TRUE, data=c(62, 65, 20, 62, 38, 35, 80, 38))
+
+p("0000") = c(.79*.80*.62, .76*.80*.65, .20*.1*.80, .7*.8*.38)
+p("1111") = c(.21*.10*.62, .24*.10*.65, .8*.1*.2, .3*.1*62)
+p("1100") = c(.21*.80*.28, .24*.80*.65, .8*.1*.2, . )
+p("1110") = c()
+p("0010") = c()
+p("0001") = c()
+
 ## Simulation Approach
 
 [SimuPOP](http://simupop.sourceforge.net) is a python package that seems to have most of the simulation functionality that we need. Specifically, the [GWAS example](https://github.com/BoPeng/simuPOP-examples) [@peng_forward-time_2010] seems to be a good case to base it on.

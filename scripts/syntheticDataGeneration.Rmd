@@ -23,7 +23,10 @@ byRow <- function(mat){
 generateData <- function(jointTable, n){
   vec <- runif(n)
   
+  #calculate cumulative probability for each category
   jointTable <- jointTable %>% mutate(cumProb = cumsum(prob))
+  
+  #lower bound for each table
   cumProbLow <- c(0, jointTable$cumProb)[1:nrow(jointTable)]
   jointTable <- data.frame(jointTable, cumProbLow)
   jointTable <- jointTable %>% filter(prob != 0)
@@ -44,9 +47,13 @@ cohort$diabetes <- factor(cohort$diabetes)
 #add age
 cohort <- cohort %>% mutate(age=2017-year_of_birth)
 
+cohort <- cohort[cohort$race != "Unknown",]
+cohort$race <- droplevels(cohort$race)
+
+
 HTNtreat <- table(cohort$htn, cohort$htn_treatment)
 condHTNtreat <- t(HTNtreat/rowSums(HTNtreat))
-
+condHTNtreat <- t(matrix(nrow=2,c(100,0,40,60), byrow = TRUE, dimnames=list(yn,yn)))
 
 out <- cut(cohort$age, breaks=c(0,20, 40, 55, 70,90))
 cohort <- data.frame(cohort, ageCategory=out)
@@ -78,13 +85,13 @@ yn <- c("no","yes")
 ageLevels <- c("0-20","20-40", "40-55", "55-70","70-90")
 a <- cptable(~age, values=ageProb*100, levels=ageLevels)
 
-condCVDAge <- t(matrix(nrow=5, ncol=2, data=c(100,0,90,10,80,20,70,30,60,40),byrow = TRUE,
+condCVDAge <- t(matrix(nrow=5, ncol=2, data=c(97,3,97,3,91,9,75,25,70,35),byrow = TRUE,
                      dimnames = list(ageLevels, yn)))
 
-a.c <- cptable(~cvd|age, values=condCVDAge, levels=yn)
-a.htn <- cptable(~htn | age, values=condHTNAgeprob, levels=yn)
-htn.treat <- cptable(~treat | htn, values=condHTNtreat, levels=yn)
-treat.cvd <- cptable(~cvd | treat, values=c(50,50,25,75), levels=yn)
+a.c <- cptable(~cvd+age, values=condCVDAge, levels=yn)
+a.htn <- cptable(~htn+age, values=condHTNAgeprob, levels=yn)
+htn.treat <- cptable(~treat+htn, values=condHTNtreat, levels=yn)
+treat.cvd <- cptable(~cvd+treat, values=c(50,50,25,75), levels=yn)
 
 plist <- compileCPT(list(a, a.c, a.htn, htn.treat, treat.cvd))
 net <- compile(grain(plist))
@@ -98,32 +105,23 @@ out <- data.frame(cvdTreatHTN=row.names(out), out, check.names = FALSE)
 testMelt <- gather(out, age, prob, -cvdTreatHTN) %>% filter(prob > 0) %>%
   separate(cvdTreatHTN, into=c("cvd", "treat", "htn"))
 
-testData <- generateData(testMelt, n=100000)
-
-testData <- testData %>% dplyr::mutate(ageCategory=ordered(age)) %>%
-  select(cvd, treat, htn, ageCategory)
-
-levels(testData$ageCategory) <- ageLevels
-
-write.csv(testData, "~/Code/cvdWorkshop/night1EDA/data/testData.txt",row.names = FALSE)
-
-write.csv(testData, "testData.csv",row.names = FALSE)
-
 
 ```
 
 ## Adding Smoking
 
-You can also embed plots, for example:
+Here I add smoking, which is associated with hypertension.
 
 ```{r}
+a.s <- cptable(~smoking+age, values=c(95,5,90,10,85,15,75,25,90,10),levels=yn)
+#s.c <- cptable(~cvd|smoking, values=c(40,60,10,90), levels=yn)
+s.h <- cptable(~htn+smoking, values=c(50,50,33,97))
 
-
-a.s <- cptable(~smoking|age, values=c(95,5,90,10,85,15,75,25,90,10),levels=yn)
-s.c <- cptable(~cvd|smoking, values=c(40,60,10,90), levels=yn)
-
-plist <- compileCPT(list(a, a.c, a.htn, htn.treat, treat.cvd, s.c, a.s)) 
+#plist <- compileCPT(list(a, a.c, a.htn, htn.treat, treat.cvd, s.c, a.s, s.h)) 
+plist <- compileCPT(list(a, a.c, a.htn, htn.treat, treat.cvd, a.s, s.h)) 
 net <- compile(grain(plist))
+
+plot(net)
 
 test <- querygrain(net, nodes=c("cvd","age", "htn","treat","smoking"), type="joint")
 
@@ -135,11 +133,112 @@ out <- data.frame(cvdTreatHTNSmoke=row.names(out), out, check.names = FALSE)
 testMelt <- gather(out, age, prob, -cvdTreatHTNSmoke) %>% filter(prob > 0) %>%
   separate(cvdTreatHTNSmoke, into=c("cvd", "treat", "htn","smoke"))
 
-
 testData <- generateData(testMelt, n=100000)
 
+pRace <- table(cohort$race)/nrow(cohort)
 
+names(pRace) <- c("AmInd", "Asian/PI", "Black/AfAm", "White")
+
+race <- cptable(~race, values=pRace, levels=names(pRace))
 #write.csv(testData, "~/Code/cvdWorkshop/night2CART/testData.csv",row.names = FALSE)
+bmiLevels <- c("15-18","18-25", "25-31","31+")
+bmiProb <- c(0.1, 0.68, 0.25, 0.06)
+
+bmi <- cptable(~bmi, values=bmiProb, levels=bmiLevels)
+
+valuesBMI <- c(97, 3, 98, 1, 98, 2, 99, 1,
+            88, 12, 92,8, 92, 8, 96,4,
+            55, 45, 70, 30, 70, 30, 85, 15,
+            20, 80, 33, 66, 33, 66, 65, 35)
+
+##t2d.race.bmi is a joint cpt: p(t2d|race,bmi)
+t2d.race.bmi <- cptable(~t2d|race:bmi, values=c(valuesBMI), levels=yn)
+t2d.cvd <- cptable(~cvd|t2d, values=c(95, 5, 40, 60), levels= yn)
+
+
+##tchol.genotype is a cpt 
+
+
+plist <- compileCPT(list(a, a.c, a.htn, htn.treat, treat.cvd, a.s, s.h, race,
+                         bmi, t2d.race.bmi, t2d.cvd)) 
+net <- compile(grain(plist))
+
+testData <- simulate(net, 1000000)
+
+table(testData$t2d)[2]/table(testData$t2d)[1]*100
+
+test <- table(testData$bmi, testData$t2d)
+colSums(test)[2]/colSums(test)[1]
+
+testData <- testData[,!duplicated(colnames(testData))]
+```
+
+In order to calculate the conditional probability table for CVD, I need to calculate p(CVD | age, t2d, htn.treat, tchol, genotype). In order to do this, I use the Weighted Sum Algorithm to define the compatible states for each of the conditional variables. We need to assign weights for each variable, and for each variable's state, identify the most likely compatible states.
+
+```{r}
+
+
+
+```
+
+## Selected SNPs
+
+These first 2 snps are on the same chromosome and so I will model them as having identical risk, and having both does not increase risk. I am limiting myself to the homozygous variants (excluding the heterozygous variants) in order to simplify things.
+
+[Rs10757278](http://snpedia.com/index.php/Rs10757278) (Chr 9, 22124478). (A;A) 0.78 x risk of heart disease, (A;G) 1.3 x risk, (G;G) 1.6x risk for heart disease. Co-morbidity: diabetes
+
+[Rs1333049](http://snpedia.com/index.php/Rs1333049) (Chr 9, 22125504). (G;G) Normal (WT); (C;G) 1.5 increased risk; (C;C) 1.9x increased risk.
+
+These last 2 snps are on different chromosomes for the first. Again, limiting to the homozygous cases to simplify things.
+
+[Rs4665058](http://snpedia.com/index.php/Rs4665058), 4x risk if have two copies of the SNP (A;A), 2 X (A;C) and (C;C) - wild type. Chr 2, 159333698
+
+[rs8055236](https://www.snpedia.com/index.php/Rs8055236) (Chr 16, 83178793) (T;T) Normal (WT);
+(G;T) 1.9x risk, (G;G) 2.2x increased risk
+
+```{r}
+raceNames <- names(pRace)
+
+#p("AA"|race) = c(21, 24, 80, 30)
+#p("GG"|race) = c(79, 76, 20, 70)
+
+rs10757278race = matrix(nrow=2, byrow = TRUE, data=c(21, 24, 80, 30, 79, 76, 20, 70), dimnames = list( c("AA","GG"),raceNames))/100
+
+r1 <- rs10757278race
+
+#p("AA"|race) = c(10, 10, 10, 10) 
+#p("CC"|race) = c(80,80,80,80)
+
+rs4665058race = matrix(nrow=2, data= c(10, 10, 10, 10, 80,80,80,80), byrow=TRUE, dimnames=
+                         list(c("AA","CC"), raceNames ))/100
+
+r2 <- rs4665058race
+
+#p("GG"|race) = c(62, 65, 20, 62)
+#P("TT"|race) = c(38, 35, 80, 38)
+
+rs8055236race = matrix(nrow=2, byrow=TRUE, data=c(62, 65, 20, 62, 38, 35, 80, 38),
+                       dimnames = list(c("GG","TT"), raceNames))/100
+r3 <- rs8055236race
+
+genotypes <- c("1111", "1110", "1100", "0010", "0001", "0000")
+
+probList <- list()
+probList[["0000"]] <- r1[2,] * r2[2,] * r3[2,]
+probList[["1100"]] <- r1[1,] * r2[2,] * r3[2,]
+probList[["1110"]] <- r1[1,] * r2[1,] * r3[2,]
+probList[["0010"]] <- r1[2,] * r2[1,] * r3[2,]
+probList[["0001"]] <- r1[2,] * r2[2,] * r3[1,]
+probList[["1111"]] <- r1[1,] * r2[1,] * r3[1,]
+
+cptgenoRace <- do.call(rbind,probList)
+cptgenoRace <- cptgenoRace[genotypes,]
+
+race.genotype <- cptable(~genotype|race, values=cptgenoRace, levels=genotypes, normalize=TRUE)
+
+##tchol.cvd is a cpt: p(cvd|tchol)
+tcholStates <- c("<160", "160-199", "200-239","240+")
+tchol.cvd <- cptable(~cvd|tchol, values=c(100,0, 96,4, 88,12, 76,24), levels=yn)
 
 
 ```
