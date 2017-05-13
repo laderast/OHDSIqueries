@@ -20,6 +20,9 @@ byRow <- function(mat){
   outVec
 }
 
+yn <- c("no","yes")
+
+
 generateData <- function(jointTable, n){
   vec <- runif(n)
   
@@ -81,18 +84,48 @@ tabCVDAge <- table(cohort$ageCategory, cohort$outcome)
 The first variable we add is Age. 
 
 ```{r cars}
-yn <- c("no","yes")
+yn <- c("N","Y")
+
+##adjust age distribution
+ageProb <- c(0.08744536, 0.35, 0.23755875, 0.1998234, 0.12517234 )
+
 ageLevels <- c("0-20","20-40", "40-55", "55-70","70-90")
 a <- cptable(~age, values=ageProb*100, levels=ageLevels)
 
-condCVDAge <- t(matrix(nrow=5, ncol=2, data=c(97,3,97,3,91,9,75,25,70,35),byrow = TRUE,
+ageProb
+
+condCVDAge <- t(matrix(nrow=5, ncol=2, 
+                       data=c(97,3,97,3,91,9,75,25,70,35),byrow = TRUE,
                      dimnames = list(ageLevels, yn)))
 
 a.c <- cptable(~cvd+age, values=condCVDAge, levels=yn)
 a.htn <- cptable(~htn+age, values=condHTNAgeprob, levels=yn)
 htn.treat <- cptable(~treat+htn, values=condHTNtreat, levels=yn)
-treat.cvd <- cptable(~cvd+treat, values=c(50,50,25,75), levels=yn)
+treat.cvd <- cptable(~cvd+treat, values=c(50,50,10,90), levels=yn)
 
+cvd.a.treat <- cptable(~cvd+treat+age, values=c(98,2, 0, 100,
+                                                90,10, 0, 100,
+                                                80,20, 0,100,
+                                                100,0,0,100), levels=yn)
+```
+
+0 0 0-20
+1 0 0-20
+0 1 0-20
+1 1 0-20
+0 0 20-40
+1 0 20-40
+0 1 20-40
+1 1 20-40
+0 0 40-55
+1 0 40-55
+0 1 40-55
+1 1 40-55
+0 0 55-70
+1 0 55-70
+
+
+```{r}
 plist <- compileCPT(list(a, a.c, a.htn, htn.treat, treat.cvd))
 net <- compile(grain(plist))
 
@@ -115,7 +148,7 @@ Here I add smoking, which is associated with hypertension.
 ```{r}
 a.s <- cptable(~smoking+age, values=c(95,5,90,10,85,15,75,25,90,10),levels=yn)
 #s.c <- cptable(~cvd|smoking, values=c(40,60,10,90), levels=yn)
-s.h <- cptable(~htn+smoking, values=c(50,50,33,97))
+s.h <- cptable(~htn+smoking, values=c(50,50,33,67))
 
 #plist <- compileCPT(list(a, a.c, a.htn, htn.treat, treat.cvd, s.c, a.s, s.h)) 
 plist <- compileCPT(list(a, a.c, a.htn, htn.treat, treat.cvd, a.s, s.h)) 
@@ -142,42 +175,85 @@ names(pRace) <- c("AmInd", "Asian/PI", "Black/AfAm", "White")
 race <- cptable(~race, values=pRace, levels=names(pRace))
 #write.csv(testData, "~/Code/cvdWorkshop/night2CART/testData.csv",row.names = FALSE)
 bmiLevels <- c("15-18","18-25", "25-31","31+")
-bmiProb <- c(0.1, 0.68, 0.25, 0.06)
+bmiProb <- c(0.16, 0.68, 0.10, 0.06)
 
 bmi <- cptable(~bmi, values=bmiProb, levels=bmiLevels)
 
 valuesBMI <- c(97, 3, 98, 1, 98, 2, 99, 1,
-            88, 12, 92,8, 92, 8, 96,4,
+            88, 12, 92,8, 92, 8, 96, 4,
             55, 45, 70, 30, 70, 30, 85, 15,
             20, 80, 33, 66, 33, 66, 65, 35)
 
 ##t2d.race.bmi is a joint cpt: p(t2d|race,bmi)
 t2d.race.bmi <- cptable(~t2d|race:bmi, values=c(valuesBMI), levels=yn)
-t2d.cvd <- cptable(~cvd|t2d, values=c(95, 5, 40, 60), levels= yn)
-
-
+t2d.cvd <- cptable(~cvd|t2d, values=c(95, 5, 5, 95), levels= yn)
+smoking <- cptable(~smoking, values=c(85, 15), levels=yn)
 ##tchol.genotype is a cpt 
 
 
-plist <- compileCPT(list(a, a.c, a.htn, htn.treat, treat.cvd, a.s, s.h, race,
-                         bmi, t2d.race.bmi, t2d.cvd)) 
+plist <- compileCPT(list(a, a.c, a.htn, htn.treat, treat.cvd, 
+                         smoking, s.h ,race, bmi, t2d.race.bmi, t2d.cvd)) 
 net <- compile(grain(plist))
 
-testData <- simulate(net, 1000000)
+testData <- simulate(net, 100000)
 
-table(testData$t2d)[2]/table(testData$t2d)[1]*100
-
-test <- table(testData$bmi, testData$t2d)
-colSums(test)[2]/colSums(test)[1]
+# table(testData$t2d)[2]/table(testData$t2d)[1]*100
+# 
+# test <- table(testData$bmi, testData$t2d)
+# colSums(test)[2]/colSums(test)[1]
 
 testData <- testData[,!duplicated(colnames(testData))]
+
+table(testData$htn)
+table(testData$cvd)
+table(testData$t2d)
+table(testData$t2d, testData$cvd)
+
+write.csv(testData, "testData7vars.csv")
+
+test
 ```
 
 In order to calculate the conditional probability table for CVD, I need to calculate p(CVD | age, t2d, htn.treat, tchol, genotype). In order to do this, I use the Weighted Sum Algorithm to define the compatible states for each of the conditional variables. We need to assign weights for each variable, and for each variable's state, identify the most likely compatible states.
 
 ```{r}
+#simpler BN
+plist <- compileCPT(list(a, a.htn, htn.treat, smoking, s.h, race, 
+                         bmi, t2d.race.bmi)) 
+net <- compile(grain(plist))
+```
 
 
+0 0-20  0
+1 0-20  0
+0 20-40 0
+1 20-40 0
+0 40-55 0
+1 40-55 0
+0 55-70 0
+1 55-70 0
+0 70-90 0
+1 70-90 0
+0 0-20  1
+1 0-20  1
+0 20-40 1
+1 20-40 1
+0 40-55 1
+1 40-55 1
+0 55-70 1
+1 55-70 1
+0 70-90 1
+1 70-90 1
+
+```{r}
+cvd <- cptable(~cvd+age+t2d+htn.treat+tchol+genotype, values = )
+
+testData <- simulate(net, nsim = 100000)
+
+#testData[!duplicated(testData),]
+
+table(testData$t2d)
+table(testData$htn)
 
 ```
 
@@ -198,26 +274,29 @@ These last 2 snps are on different chromosomes for the first. Again, limiting to
 
 ```{r}
 raceNames <- names(pRace)
-
 #p("AA"|race) = c(21, 24, 80, 30)
 #p("GG"|race) = c(79, 76, 20, 70)
 
-rs10757278race = matrix(nrow=2, byrow = TRUE, data=c(21, 24, 80, 30, 79, 76, 20, 70), dimnames = list( c("AA","GG"),raceNames))/100
+rs10757278race = matrix(nrow=2, byrow = TRUE, data=c(21, 24, 80, 30, 
+                                                     79, 76, 20, 70), 
+                        dimnames = list( c("AA","GG"),raceNames))/100
 
 r1 <- rs10757278race
 
 #p("AA"|race) = c(10, 10, 10, 10) 
 #p("CC"|race) = c(80,80,80,80)
 
-rs4665058race = matrix(nrow=2, data= c(10, 10, 10, 10, 80,80,80,80), byrow=TRUE, dimnames=
-                         list(c("AA","CC"), raceNames ))/100
+rs4665058race = 
+  matrix(nrow=2, data= c(10, 10, 10, 10, 90,90,90,90), byrow=TRUE, 
+         dimnames= list(c("AA","CC"), raceNames ))/100
 
 r2 <- rs4665058race
 
 #p("GG"|race) = c(62, 65, 20, 62)
 #P("TT"|race) = c(38, 35, 80, 38)
 
-rs8055236race = matrix(nrow=2, byrow=TRUE, data=c(62, 65, 20, 62, 38, 35, 80, 38),
+rs8055236race = matrix(nrow=2, byrow=TRUE, data=c(62, 65, 20, 40, 
+                                                  38, 35, 80, 60),
                        dimnames = list(c("GG","TT"), raceNames))/100
 r3 <- rs8055236race
 
@@ -240,5 +319,184 @@ race.genotype <- cptable(~genotype|race, values=cptgenoRace, levels=genotypes, n
 tcholStates <- c("<160", "160-199", "200-239","240+")
 tchol.cvd <- cptable(~cvd|tchol, values=c(100,0, 96,4, 88,12, 76,24), levels=yn)
 
+gender <- cptable(~gender, c(45,55), levels=c("M","F"))
+
+genotype.tchol <- cptable(~tchol|genotype, 
+                          values = c(5,10,30,55,
+                                     10,30,40,20,
+                                     20,50,20,10,
+                                     20,50,20,10,
+                                     30,60,5,5,
+                                     30,60,5,5), levels=tcholStates)
+
+#c.a.t.d.tchol <- andtable(~cvd + age + treat, levels=yn)
+
+plist <- compileCPT(list(a, a.htn, htn.treat, smoking, s.h, race,
+                         bmi, t2d.race.bmi, race.genotype, genotype.tchol,
+                         gender))
+
+net <- compile(grain(plist))
+
+
+
+testData <- simulate(net, nsim = 1000)
+
+testData[1:30,]
+
+table(testData$htn)
+table(testData$t2d)
+
+  selectInRange <- function(rangeString){
+    outVal <- 0
+    if(grepl("-",rangeString, fixed=TRUE)){
+    rangeStrs <- strsplit(rangeString,split = "-")[[1]]
+    rangeStrs <- as.numeric(rangeStrs)
+    outVal <- round(runif(1, rangeStrs[1], rangeStrs[2]))
+    
+    }
+    if(grepl("+",rangeString, fixed=TRUE)){
+      outVal <- gsub("+","",rangeString, fixed=TRUE)
+      #print(rangeString)
+      outVal <- as.numeric(outVal)
+    }
+    if(grepl("<", rangeString, fixed=TRUE)){
+      outVal <- gsub("<","", rangeString, fixed=TRUE)
+      outVal <- as.numeric(outVal)
+    }
+    outVal
+  }
+  
+  convertYN <- function(value){
+    ynVec <- c("N"=0,"Y"=1)
+    return(ynVec[value])
+  }
+
+
+
+selsel <- function(x){sapply(as.character(x), selectInRange)}
+convertYN <- function(x){sapply(x, function(y){
+  ynVec <- c("N"=0,"Y"=1)
+  return(ynVec[y])
+})}
+
+testData <- testData[,!duplicated(colnames(testData))]
+
+newTestData <- testData %>% mutate(numAge=selsel(age),
+                                   numBMI=selsel(bmi),
+                                   numTchol=selsel(tchol),
+                                   numHtn=ifelse(convertYN(htn)==1, 180, 130),
+                                   numTreat=convertYN(treat),
+                                   numT2D=convertYN(t2d),
+                                   numSmoke=convertYN(smoking),
+                                   numGenotype=ifelse(genotype=="0001",
+                                                      1,0))
+
+malePatients <- newTestData %>% filter(gender=="M")
+femalePatients <- newTestData %>% filter(gender=="F")
+
+
+maleRiskScore <-function(df) {
+
+  coeffList <- list(numAge=3.11296, numHtn=1.85508,   
+                  numSmoke=0.70953, numT2D=0.5316, #numGenotype=0.55,
+                  numBMI=.7927)
+  
+  coeffNames <- names(coeffList)
+  
+  len <- nrow(df)
+  
+  coeffList2 <- lapply(names(coeffList), function(x){vec <- 
+    rep(coeffList[[x]], times=len)
+    vec
+  })
+  
+  names(coeffList2) <- names(coeffList)
+  
+  coeffFrame <- data.frame(coeffList2)
+  
+  coeffFrame <- coeffFrame %>% mutate(numHtn2 = 
+                                        ifelse(df$treat=="Y", 1.99881, 
+                                               1.93303)) %>% select(-numHtn, 
+                                              numHtn=numHtn2)
+  
+  
+  df2 <- df[,coeffNames]
+  df2[,c("numAge", "numHtn", "numBMI")] <-   
+    log(df2[,c("numAge", "numHtn", "numBMI")])
+  coeffFrame <- coeffFrame[, coeffNames]
+  
+  coefSum <- rowSums(coeffFrame * df2)
+  outScore <- (1 - 0.88431 ^ exp(coefSum - 23.988)) * 100
+  
+  return(data.frame(coefSum, outScore))
+}
+
+
+
+femaleRiskScore <-function(df) {
+
+  coeffList <- list(numAge=2.72107, numHtn=2.81291,   
+                  numSmoke=0.61868, numT2D=0.77763, #numGenotype=0.55,
+                  numBMI=.51125)
+  
+  coeffNames <- names(coeffList)
+  
+  len <- nrow(df)
+  
+  coeffList2 <- lapply(names(coeffList), function(x){vec <- 
+    rep(coeffList[[x]], times=len)
+    vec
+  })
+  
+  names(coeffList2) <- names(coeffList)
+  
+  coeffFrame <- data.frame(coeffList2)
+  
+  coeffFrame <- coeffFrame %>% mutate(numHtn2 = 
+                                        ifelse(df$treat=="Y", 2.88267, 
+                                               2.81291)) %>% select(-numHtn, 
+                                              numHtn=numHtn2)
+  
+  
+  df2 <- df[,coeffNames]
+  df2[,c("numAge", "numHtn", "numBMI")] <-   
+    log(df2[,c("numAge", "numHtn", "numBMI")])
+  coeffFrame <- coeffFrame[, coeffNames]
+  
+  coefSum <- rowSums(coeffFrame * df2)
+  outScore <- (1 - 0.94833 ^ exp(coefSum - 26.0145)) * 100
+  
+  return(data.frame(coefSum, outScore))
+}
+
+mp <- maleRiskScore(malePatients)
+
+hist(mp$outScore)
+fp <- femaleRiskScore(femalePatients)
+
+out <- rbind(data.frame(malePatients, mp), data.frame(femalePatients,fp))
+out <- out %>% mutate(outProb = outScore/100)
+
+
+testVar <- runif(nrow(out))
+out <- data.frame(out, testVar)
+out <- out %>% mutate(cvd= ifelse(testVar < outProb, 1, 0))
+
+hist(out$outProb)
+
+femaleRiskScore <- function(pVec){ 
+  coeffs[["F"]] <- c(age=2.32888, tchol=1.2904, htn=2.76157,
+                     smoking=0.52873, t2d=0.57367, numGenotype=0.55) 
+  
+  if(pVec$htn == 1 & pVec$treat == 1){
+    coeffs[["F"]]$htn = 1.9981
+  }
+}
+
+test <- maleRiskScore(malePatients)
+
+head(newTestData)
+
+scorePatient(testData[1,])
 
 ```
