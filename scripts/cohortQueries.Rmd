@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Tables
 
-```{r}
+```{r warning=FALSE}
 library(ggplot2)
 library(dplyr)
 ##Load Connection Information (not saved to git)
@@ -34,6 +34,7 @@ mydb = dbConnect(PostgreSQL(), user=user, password=password, port=5432, dbname="
 #show all tables in OHDSI DB
 dbListTables(mydb)
 ```
+
 
 ## Grabbing everyone
 

@@ -4,8 +4,8 @@
 #set environmental variables
 #
 
-install.packages("ggplot2")
-install.packages("dplyr")
+#install.packages("ggplot2")
+#install.packages("dplyr")
 library(ggplot2)
 
 library(dplyr)
@@ -13,8 +13,13 @@ library(dplyr)
 #jsonObject <- fromJSON()
 
 source("scripts/connect.R")
+<<<<<<< HEAD
 install.packages("RPostgreSQL")
 install.packages("DBI")
+=======
+#install.packages("RPostgreSQL")
+#install.packages("DBI")
+>>>>>>> 65f073ccb6524c1d16d4f8ebb8ae190803abbad9
 
 library(RPostgreSQL)
 library(DBI)
@@ -24,10 +29,14 @@ drv <- dbDriver("PostgreSQL")
 #                                                         server = server, schema = schema, port = port)
 
 #library(RMySQL)
+<<<<<<< HEAD
 mydb = dbConnect(PostgreSQL(), user=user, password=password, port=5432, dbname="postgres", host=server)
+=======
+mydb = dbConnect(PostgreSQL(), user=user, password=password, port=5432, dbname="ohdsi_omop", host="cmp03.acc.research.computing")
+>>>>>>> 65f073ccb6524c1d16d4f8ebb8ae190803abbad9
 
 dbListTables(mydb)
-?dbFetch
+#?dbFetch
 
 #step 1: pull every person
 sqlStatementall <- "
@@ -39,7 +48,9 @@ pr.person_id, pr.year_of_birth, pr.month_of_birth, pr.day_of_birth, pr.race_sour
 
 "
 rs <- dbSendQuery(mydb,sqlStatementall)
-fetch(rs, n=-1)
+allPeople <- fetch(rs, n=-1)
+summary(allPeople)
+
 dbClearResult(rs)
 #step 1.b : query cohorts - groups of patients predefined
 sqlStatementcoh <- "
