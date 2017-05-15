@@ -1,0 +1,105 @@
+---
+title: "Investigating Cohort Extraction"
+author: "Ted Laderas"
+date: "5/4/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(forcats)
+library(knitr)
+```
+
+## Looking at the Cohort
+
+Here I report on the various statistics of the cohort so we can decide whether our risk groups are realistic or not.
+
+```{r cars}
+cohort <- read.csv("~/Code/OHDSIqueries/data/cohorts_05022017.csv")
+#recode these variables as categorical
+cohort$outcome <- factor(cohort$outcome)
+cohort$htn <- factor(cohort$htn)
+cohort$htn_treatment <- factor(cohort$htn_treatment)
+cohort$diabetes <- factor(cohort$diabetes)
+#add age
+cohort <- cohort %>% mutate(age=2017-year_of_birth)
+
+byRow <- function(mat){
+  rowVec <- lapply(1:nrow(mat), function(x){mat[x,]})
+  outVec <- Reduce(c, rowVec)
+  outVec
+}
+
+
+
+```
+
+Here are the overall summary statistics of our cohort:
+
+```{r}
+returnReport <- function(cohort, totalSize){
+  cohortOut <- cohort %>% select(age, race, outcome, diabetes,
+                                 htn, htn_treatment, bmi,
+                                 tchol)
+  fct_count(cohort$outcome)
+  outcomeTable <- table(cohort$outcome)
+  percentOfTotal <- signif(nrow(cohort)/totalSize*100, digits=3)
+  incidence <- signif(outcomeTable[2]/outcomeTable[1]*100,digits = 3)
+  print(paste0("Number in subgroup: ", nrow(cohort), 
+               " (", percentOfTotal, "%)"))
+  print(paste("Incidence of CVD in subgroup:", incidence, "%"))
+  print(summary(cohortOut))
+  return(list(percent=percentOfTotal, incidence=incidence))
+  }
+
+
+returnReport(cohort, nrow(cohort))
+
+condHTNtreat <- table(cohort$htn, cohort$htn_treatment)/nrow(cohort)
+out <- cut(cohort$age, breaks=c(0,20, 40, 55, 70,90))
+cohort <- data.frame(cohort, ageCategory=out)
+
+#cohort <- cohort %>% mutate(ageCategory = ntile(age,n=4))
+
+tabOut <- table(out)
+ageProb <- tabOut/sum(tabOut)
+
+
+condHTNAge <- table(cohort$ageCategory, cohort$htn)
+
+condHTNAgeprob <- condHTN/sum(condHTN)
+
+tabCVDAge <- table(cohort$ageCategory, cohort$outcome)
+condCVDAge <- 
+```
+These are the subgroups that we have defined in the dataset.
+
+```{r}
+subGroups <- read.csv("~/Code/OHDSIqueries/scripts/subgroups.csv", stringsAsFactors = FALSE)
+
+knitr::kable(subGroups)
+
+outList <- lapply(subGroups$defintion, function(x){return(strsplit(x, ",")[[1]])})
+names(outList) <- subGroups$cohortNumber
+```
+
+Here I return the first five subgroups and their statistics. Note that I don't calculate the 6-10th subgroups because we don't yet have smoking status.
+
+Overall, we have very few total cholesterol numbers. 
+
+```{r}
+cohortList <- lapply(names(outList)[1:5], function(x){
+  out <- cohort %>% filter_(.dots=outList[[x]])
+  print(paste("cohort number:", x))
+  print(paste(outList[[x]], collapse = ", "))
+  out <-returnReport(out, totalSize = nrow(cohort))
+  out <- data.frame(subGroups[x,],out)
+})
+```
+
+Here are the groups and their percent of the total data and their CVD incidence.
+
+```{r}
+
+kable(do.call(rbind, cohortList))
