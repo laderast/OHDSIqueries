@@ -66,38 +66,97 @@ table(allPeople$ethnicity_source_value)
 
 ```{r}
 sqlStatementdata <- "
-select 
-pr.person_id, pr.year_of_birth, pr.month_of_birth, pr.day_of_birth, pr.race_source_value as race, 
-pr.ethnicity_source_value as ethnicity,
-case when o.person_ID is not null then 1 else 0 END as outcome, o.OUTCOME_NAME, o.ASCVD_code,
-case when dx.cohort_name='Diabetes - ICD10CM'
-then 1 else 0 end as diabetes
-,case when dx.cohort_name='Hypertension - ICD10CM'
-then 1 else 0 end as htn
-,case when dx.cohort_name='Anti-Hypertensive Pharmacologic Therapy - RxNORM'
-then 1 else 0 end as htn_treatment
-,case when dx.cohort_name='Diabetes - ICD10CM'
-then dx.cohort_code else 'NA' end as diabetes_code
-,case when dx.cohort_name='Hypertension - ICD10CM'
-then dx.cohort_code else 'NA' end as htn_code
-,case when dx.cohort_name='Anti-Hypertensive Pharmacologic Therapy - RxNORM'
-then dx.cohort_code else 'NA' end as htn_tx_code
+SELECT pr.person_id
+       , pr.year_of_birth
+       , pr.month_of_birth
+       , pr.day_of_birth
+       , pr.race_source_value AS race
+       , pr.ethnicity_source_value AS ethnicity
+       , CASE WHEN o.person_ID IS NOT NULL THEN 1 ELSE 0 END AS outcome
+       , o.OUTCOME_NAME
+       , o.ASCVD_code
+       , CASE WHEN dx.cohort_name = 'Diabetes - ICD10CM' THEN 1 ELSE 0 END AS diabetes
+       , CASE 
+         WHEN dx2.cohort_name is not null THEN 1
+          WHEN dx3.cohort_name is not null THEN 1
+          WHEN sbp.value_as_number > 140 then 1 
+     ELSE 0 END AS htn
+       , CASE WHEN dx3.cohort_name = 'Anti-Hypertensive Pharmacologic Therapy - RxNORM' THEN 1 ELSE 0 END AS htn_treatment
+       , CASE WHEN dx.cohort_name = 'Diabetes - ICD10CM' THEN dx.cohort_code ELSE 'NA' END AS diabetes_code
+       , CASE WHEN dx2.cohort_name = 'Hypertension - ICD10CM' THEN dx2.cohort_code 
+          WHEN dx3.cohort_name is not null THEN 'I10'
+          WHEN sbp.value_as_number > 140 then 'I10' 
+ELSE 'NA' END AS htn_code
+       , CASE WHEN dx3.cohort_name = 'Anti-Hypertensive Pharmacologic Therapy - RxNORM' THEN dx3.cohort_code ELSE 'NA' END AS htn_tx_code
+       , l.value_as_number AS LDL
+       , h.value_as_number AS HDL
+       , b.value_as_number AS BMI
+       , t.value_as_number AS Tchol
+       , sbp.value_as_number AS SBP
+       , dbp.value_as_number AS DBP
+FROM   person pr
+       LEFT JOIN (SELECT co.person_id, min(cd.cohort_definition_name) AS OUTCOME_NAME, min(cs.concept_code) AS ASCVD_code
+                  FROM   cohort_definition cd
+                         JOIN cohort_attribute ca ON ca.cohort_definition_id = cd.cohort_definition_id
+                         JOIN concept cs ON ca.value_as_concept_id = cs.concept_id
+                         INNER JOIN condition_occurrence co ON co.condition_concept_id = cs.concept_id
+                  WHERE  cd.cohort_definition_name = 'ASCVD' group by person_ID) o
+         ON (pr.person_ID = o.person_ID)
+       LEFT JOIN
+       (SELECT co.person_ID, cd.cohort_definition_name AS cohort_NAME, cs.concept_code AS cohort_code
+        FROM   cohort_definition cd
+               JOIN cohort_attribute ca ON ca.cohort_definition_id = cd.cohort_definition_id
+               JOIN concept cs ON ca.value_as_concept_id = cs.concept_id
+               INNER JOIN condition_occurrence co ON co.condition_concept_id = cs.concept_id
+        WHERE  cd.cohort_definition_name IN
+                 ('Diabetes - ICD10CM')) dx
+         ON (dx.person_ID = pr.person_ID)
+       LEFT JOIN
+       (SELECT co.person_ID, cd.cohort_definition_name AS cohort_NAME, cs.concept_code AS cohort_code
+        FROM   cohort_definition cd
+               JOIN cohort_attribute ca ON ca.cohort_definition_id = cd.cohort_definition_id
+               JOIN concept cs ON ca.value_as_concept_id = cs.concept_id
+               INNER JOIN condition_occurrence co ON co.condition_concept_id = cs.concept_id
+        WHERE  cd.cohort_definition_name IN
+                 ('Hypertension - ICD10CM')) dx2
+         ON (dx2.person_ID = pr.person_ID)
 
-from person pr
-LEFT JOIN (select 
-co.person_id, cd.cohort_definition_name as OUTCOME_NAME, cs.concept_code as ASCVD_code 
-from cohort_definition cd
-join cohort_attribute ca on ca.cohort_definition_id = cd.cohort_definition_id
-join concept cs on ca.value_as_concept_id = cs.concept_id
-inner join condition_occurrence co on co.condition_concept_id = cs.concept_id
-where cd.cohort_definition_name='ASCVD') o on (pr.person_ID=o.person_ID)
-LEFT JOIN (select 
- co.person_ID, cd.cohort_definition_name as cohort_NAME, cs.concept_code as cohort_code 
-from cohort_definition cd
-join cohort_attribute ca on ca.cohort_definition_id = cd.cohort_definition_id
-join concept cs on ca.value_as_concept_id = cs.concept_id
-inner join condition_occurrence co on co.condition_concept_id = cs.concept_id
-where cd.cohort_definition_name in ('Diabetes - ICD10CM','Hypertension - ICD10CM','Anti-Hypertensive Pharmacologic Therapy - RxNORM')) dx on (dx.person_ID=pr.person_ID)
+       LEFT JOIN
+       (SELECT co.person_ID, cd.cohort_definition_name AS cohort_NAME, string_agg(cs.concept_code,',') AS cohort_code
+        FROM   cohort_definition cd
+               JOIN cohort_attribute ca ON ca.cohort_definition_id = cd.cohort_definition_id
+               JOIN concept cs ON ca.value_as_concept_id = cs.concept_id
+               INNER JOIN condition_occurrence co ON co.condition_concept_id = cs.concept_id
+        WHERE  cd.cohort_definition_name IN
+                 ('Anti-Hypertensive Pharmacologic Therapy - RxNORM')
+ group by co.person_ID, cd.cohort_definition_name) dx3
+         ON (dx3.person_ID = pr.person_ID)
+
+       LEFT JOIN (SELECT cs.Concept_code, o.person_ID, max(o.value_as_number) as value_as_number, max(o.observation_date) as odate
+                  FROM   concept cs INNER JOIN Observation o ON o.observation_concept_id = cs.concept_id
+                  WHERE  cs.concept_code = '13457-7' group by cs.Concept_code, o.person_ID) l
+         ON l.person_id = pr.person_ID
+       LEFT JOIN (SELECT cs.Concept_code, o.person_ID, max(o.value_as_number) as value_as_number, max(o.observation_date) as odate
+                  FROM   concept cs INNER JOIN Observation o ON o.observation_concept_id = cs.concept_id
+                  WHERE  cs.Concept_Code = '2085-9' group by cs.Concept_code, o.person_ID) h
+         ON h.person_id = pr.person_ID
+       LEFT JOIN (SELECT cs.Concept_code, o.person_ID, max(o.value_as_number) as value_as_number, max(o.observation_date) as odate
+                  FROM   concept cs INNER JOIN Observation o ON o.observation_concept_id = cs.concept_id
+                  WHERE  cs.Concept_Code = '12183-0' group by cs.Concept_code, o.person_ID) t
+         ON t.person_id = pr.person_ID
+       LEFT JOIN (SELECT cs.Concept_code, o.person_ID, max(o.value_as_number) as value_as_number, max(o.observation_date) as odate
+                  FROM   concept cs INNER JOIN Observation o ON o.observation_concept_id = cs.concept_id
+                  WHERE  cs.Concept_Code = '41909-3' group by cs.Concept_code, o.person_ID) b
+         ON b.person_id = pr.person_ID
+       LEFT JOIN (SELECT cs.Concept_code, o.person_ID, max(o.value_as_number) as value_as_number, max(o.observation_date) as odate
+                  FROM   concept cs INNER JOIN Observation o ON o.observation_concept_id = cs.concept_id
+                  WHERE  cs.Concept_Code = '8480-6' group by cs.Concept_code, o.person_ID) sbp
+         ON sbp.person_id = pr.person_ID
+       LEFT JOIN (SELECT cs.Concept_code, o.person_ID, max(o.value_as_number) as value_as_number, max(o.observation_date) as odate
+                  FROM   concept cs INNER JOIN Observation o ON o.observation_concept_id = cs.concept_id  WHERE  cs.Concept_Code = '8462-4' group by cs.Concept_code, o.person_ID) dbp
+         ON dbp.person_id = pr.person_ID
+limit 100000
+;
 
 "
 
@@ -107,20 +166,29 @@ summary(cohorts)
 View(cohorts)
 dbClearResult(rs)
 ```
-```{r}
-sqlStatementdata <- "
-select 
-co.person_id, cd.cohort_definition_name as OUTCOME_NAME, cs.concept_code as ASCVD_code 
-from cohort_definition cd
-join cohort_attribute ca on ca.cohort_definition_id = cd.cohort_definition_id
-join concept cs on ca.value_as_concept_id = cs.concept_id
-left join condition_occurrence co on co.condition_concept_id = cs.concept_id
-where cd.cohort_definition_name='ASCVD'
 
+```{r}
+sqlStatementset <- "
+SELECT co.person_ID, cd.cohort_definition_name AS cohort_NAME, cs.concept_code AS cohort_code
+        FROM   cohort_definition cd
+               JOIN cohort_attribute ca ON ca.cohort_definition_id = cd.cohort_definition_id
+               JOIN concept cs ON ca.value_as_concept_id = cs.concept_id
+               INNER JOIN condition_occurrence co ON co.condition_concept_id = cs.concept_id
+        WHERE  cd.cohort_definition_name IN
+                 ('Hypertension - ICD10CM')
 "
 
-rs <- dbSendQuery(mydb,sqlStatementdata)
+rs <- dbSendQuery(mydb,sqlStatementset)
 subq <- fetch(rs, n=-1)
 summary(subq)
+dbClearResult(rs)
+```
+```{r}
+con <- " select * 
+FROM   cohort_definition cd
+"
+rs <- dbSendQuery(mydb,con)
+swt <- fetch(rs, n=-1)
+View(swt)
 dbClearResult(rs)
 ```
